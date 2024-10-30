@@ -214,8 +214,7 @@ def sample_hf_requests(
                            streaming=True)
     assert "conversations" in dataset.features, (
         "HF Dataset must have 'conversations' column.")
-    filter_func = lambda x: len(x["conversations"]) >= 2
-    filtered_dataset = dataset.shuffle(seed=random_seed).filter(filter_func)
+    filtered_dataset = dataset.shuffle(seed=random_seed)
     sampled_requests: List[Tuple[str, int, int, Dict[str,
                                                      Collection[str]]]] = []
     for data in filtered_dataset:
@@ -223,9 +222,20 @@ def sample_hf_requests(
             break
 
         # Tokenize the prompts and completions.
-        prompt = data["conversations"][0]["value"]
+        summary_prompt = """\
+        
+        Paraphrase the above text with precise language that captures the key topics and omit unimportant details. 
+        Follow the following instruction when writing your response:
+        1. Give your response as a paragraph, not bullet points.
+        2. Your response should be the paraphrased text and nothing else.
+        3. Do not begin your sentence with "The authors introduce", "The text discusses" or similar. 
+        4. Speak in passive voice that removes the subject (i.e., the authors or the text) entirely, focusing only on the object of discussion
+        5. As an example, instead of saying 'The work examines 5 methods for reasoning and decision-making.' you would say 'Five methods for reasoning and decision-making are examined.'
+
+        Response: """
+        prompt = data["article"] + summary_prompt
         prompt_token_ids = tokenizer(prompt).input_ids
-        completion = data["conversations"][1]["value"]
+        completion = data["abstract"]
         completion_token_ids = tokenizer(completion).input_ids
         prompt_len = len(prompt_token_ids)
         output_len = len(completion_token_ids
@@ -233,26 +243,8 @@ def sample_hf_requests(
         if fixed_output_len is None and (prompt_len < 4 or output_len < 4):
             # Prune too short sequences.
             continue
-        if fixed_output_len is None and \
-            (prompt_len > 1024 or prompt_len + output_len > 2048):
-            # Prune too long sequences.
-            continue
 
-        if "image" in data and isinstance(data["image"], Image):
-            image: Image = data["image"]
-            image = image.convert("RGB")
-            image_data = io.BytesIO()
-            image.save(image_data, format='JPEG')
-            image_base64 = base64.b64encode(
-                image_data.getvalue()).decode("utf-8")
-            mm_content = {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{image_base64}"
-                },
-            }
-        else:
-            mm_content = None
+        mm_content = None
 
         sampled_requests.append((prompt, prompt_len, output_len, mm_content))
 
@@ -864,7 +856,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dataset-path",
                         type=str,
-                        default=None,
+                        default="ccdv/arxiv-summarization",
                         help="Path to the sharegpt/sonnet dataset. "
                         "Or the huggingface dataset ID if using HF dataset.")
     parser.add_argument(
@@ -1071,11 +1063,11 @@ if __name__ == "__main__":
     hf_group = parser.add_argument_group("hf dataset options")
     hf_group.add_argument("--hf-subset",
                           type=str,
-                          default=None,
+                          default="section",
                           help="Subset of the HF dataset.")
     hf_group.add_argument("--hf-split",
                           type=str,
-                          default=None,
+                          default="test",
                           help="Split of the HF dataset.")
     hf_group.add_argument(
         "--hf-output-len",
