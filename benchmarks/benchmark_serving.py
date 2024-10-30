@@ -212,10 +212,9 @@ def sample_hf_requests(
                            name=dataset_subset,
                            split=dataset_split,
                            streaming=True)
-    filtered_dataset = dataset.shuffle(seed=random_seed)
     sampled_requests: List[Tuple[str, int, int, Dict[str,
                                                      Collection[str]]]] = []
-    for data in filtered_dataset:
+    for data in dataset:
         if len(sampled_requests) == num_requests:
             break
 
